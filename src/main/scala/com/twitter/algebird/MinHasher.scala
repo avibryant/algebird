@@ -66,9 +66,11 @@ abstract class MinHasher[H](targetThreshold : Double, maxBytes : Int)(implicit n
 
   /** Bucket keys to use for quickly finding other similar items via locality sensitive hashing */
   def buckets(sig : Array[Byte]) = {
-    sig.grouped(numRows*hashSize).toList.map{band =>
-      val (long1, long2) = hashFunctions.head(band)
-      long1
+    sig.grouped(numRows*hashSize).toList.zipWithIndex.map{
+      case (band, index) =>
+        val (long1, long2) = hashFunctions.head(band)
+        //(long1 << 8) + index
+        long1
     }
   }
 
