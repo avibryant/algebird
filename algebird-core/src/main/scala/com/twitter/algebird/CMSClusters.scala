@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 package com.twitter.algebird
-import scala.util.Random
 
 /**
  * Based on "A Framework for Clustering Massive-Domain Data Streams", C Aggarwal
@@ -26,21 +25,23 @@ import scala.util.Random
  * @author Avi Bryant
  */
 
-case class CMSClusters[K](clusters: Seq[CMS[K]]) {
-  def clusterIndexFor(cms: CMS[K]): Int =
-    findClusterIndex{ _.innerProduct(cms) }
+case class CMSClusters[K: Ordering](clusters: Seq[CMS[K]], params: CMSParams[K]) {
+  def clusterIndexFor(keys: Seq[K]): Int = clusterIndexFor(CMSItems(keys.toList, params))
 
-  def clusterIndexFor(keys: Seq[K]): Int =
-    findClusterIndex{ cms => keys.map{ k => cms.frequency(k) }.reduce{ _ + _ } }
+  def clusterIndexFor(cms: CMS[K]): Int = {
+    //randomize the order we search the clusters. TODO: make this deterministic?
+    val start = scala.util.Random.nextInt(clusters.size)
 
-  def findClusterIndex(fn: CMS[K] => Approximate[Long]): Int =
-    Random.shuffle(clusters.zipWithIndex)
-      .maxBy{ case (cluster, i) => fn(cluster).estimate }
-      ._2
+    0.until(clusters.size).map{ i =>
+      val index = (start + i) % clusters.size
+      index -> clusters(index).innerProduct(cms).estimate
+    }.maxBy{ _._2 }
+      ._1
+  }
 }
 
 case class CMSClustersMonoid[K: Ordering: CMSHasher](clusters: Int, cmsMonoid: CMSMonoid[K]) {
-  val zero = CMSClusters[K](1.to(clusters).map{ i => cmsMonoid.zero })
+  val zero = CMSClusters[K](1.to(clusters).map{ i => cmsMonoid.zero }, cmsMonoid.params)
 
   def plus(left: CMSClusters[K], right: CMSClusters[K]) = {
     val clusterAssignments = right.clusters.groupBy{ r => left.clusterIndexFor(r) }
@@ -48,8 +49,8 @@ case class CMSClustersMonoid[K: Ordering: CMSHasher](clusters: Int, cmsMonoid: C
       case (cms, i) =>
         clusterAssignments.getOrElse(i, Nil).foldLeft(cms){ (l, r) => cmsMonoid.plus(l, r) }
     }
-    CMSClusters[K](newClusters)
+    CMSClusters[K](newClusters, cmsMonoid.params)
   }
 
-  def create(keys: Seq[K]) = plus(zero, CMSClusters[K](List(cmsMonoid.create(keys))))
+  def create(keys: Seq[K]) = plus(zero, CMSClusters[K](List(cmsMonoid.create(keys)), cmsMonoid.params))
 }
