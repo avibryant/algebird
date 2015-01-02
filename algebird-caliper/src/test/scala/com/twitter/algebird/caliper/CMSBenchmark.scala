@@ -1,7 +1,7 @@
 package com.twitter.algebird.caliper
 
 import com.google.caliper.{ Param, SimpleBenchmark }
-import com.twitter.algebird.{ TopPctCMS, TopCMS, CMSHasherImplicits, TopPctCMSMonoid }
+import com.twitter.algebird.{ TopPctCMS, TopCMS, CMSHasherImplicits, TopPctCMSMonoid, CMSMonoid }
 
 /**
  * Benchmarks the Count-Min sketch implementation in Algebird.
@@ -23,15 +23,19 @@ class CMSBenchmark extends SimpleBenchmark {
   @Param(Array("0.2"))
   val heavyHittersPct: Double = 0.0
 
-  @Param(Array("100"))
+  @Param(Array("100", "1000"))
   val operations: Int = 0 // Number of operations per benchmark repetition (cf. `reps`)
 
   @Param(Array("2048"))
   val maxBits: Int = 0
 
+  @Param(Array("0", "10", "100"))
+  val maxItems: Int = 0
+
   var random: scala.util.Random = _
   var cmsLongMonoid: TopPctCMSMonoid[Long] = _
   var cmsBigIntMonoid: TopPctCMSMonoid[BigInt] = _
+  var cmsItemsMonoid: CMSMonoid[Long] = _
 
   override def setUp {
     // Required import of implicit values (e.g. for BigInt- or Long-backed CMS instances)
@@ -47,11 +51,16 @@ class CMSBenchmark extends SimpleBenchmark {
       TopPctCMS.monoid[BigInt](eps, delta, seed, heavyHittersPct)
     }
 
+    cmsItemsMonoid = {
+      val seed = 1
+      new CMSMonoid(eps, delta, seed, maxItems)
+    }
+
     random = new scala.util.Random
   }
 
   // Case A (K=Long): We count the first hundred integers, i.e. [1, 100]
-  def timePlusOfFirstHundredIntegersWithLongCms(reps: Int): Int = {
+  def timePlusOfFirstNIntegersWithLongCms(reps: Int): Int = {
     var dummy = 0
     while (dummy < reps) {
       (1 to operations).view.foldLeft(cmsLongMonoid.zero)((l, r) => { l ++ cmsLongMonoid.create(r) })
@@ -61,7 +70,7 @@ class CMSBenchmark extends SimpleBenchmark {
   }
 
   // Case B.1 (K=BigInt): We count the first hundred integers, i.e. [1, 100]
-  def timePlusOfFirstHundredIntegersWithBigIntCms(reps: Int): Int = {
+  def timePlusOfFirstNIntegersWithBigIntCms(reps: Int): Int = {
     var dummy = 0
     while (dummy < reps) {
       (1 to operations).view.foldLeft(cmsBigIntMonoid.zero)((l, r) => { l ++ cmsBigIntMonoid.create(r) })
@@ -83,4 +92,12 @@ class CMSBenchmark extends SimpleBenchmark {
     dummy
   }
 
+  def timePlusOfFirstNIntegersWithItemsCms(reps: Int): Int = {
+    var dummy = 0
+    while (dummy < reps) {
+      (1 to operations).view.foldLeft(cmsItemsMonoid.zero)((l, r) => { l ++ cmsItemsMonoid.create(r) })
+      dummy += 1
+    }
+    dummy
+  }
 }
